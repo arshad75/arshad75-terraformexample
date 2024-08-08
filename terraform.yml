@@ -1,0 +1,60 @@
+name: Terraform AWS CI/CD
+
+on:
+  push:
+    branches:
+      - main # Trigger on pushes to the main branch
+
+env:
+  TF_VAR_aws_region: "us-east-1" # Replace with your desired AWS region
+
+jobs:
+  terraform:
+    name: Terraform Deploy
+    runs-on: ubuntu-latest
+
+    steps:
+      # Checkout the code
+      - name: Checkout Code
+        uses: actions/checkout@v2
+
+      # Setup Terraform
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v1
+        with:
+          terraform_version: 1.2.0 # Specify the Terraform version
+
+      # Configure AWS Credentials
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v1
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.TF_VAR_aws_region }}
+
+      # Terraform Init
+      - name: Terraform Init
+        id: init
+        working-directory: ./terraform
+        run: terraform init
+
+      # Terraform Plan
+      - name: Terraform Plan
+        id: plan
+        working-directory: ./terraform
+        run: terraform plan -out=tfplan
+        continue-on-error: true # Allow the pipeline to proceed to the apply step even if the plan fails
+
+      # Upload Plan as Artifact (Optional, but useful for debugging)
+      - name: Upload Plan as Artifact
+        uses: actions/upload-artifact@v2
+        if: steps.plan.outcome == 'failure' || steps.plan.outcome == 'success'
+        with:
+          name: tfplan
+          path: ./terraform/tfplan
+
+      # Terraform Apply (Manual Approval)
+      - name: Terraform Apply
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push' # Only run on push to main branch
+        working-directory: ./terraform
+        run: terraform apply -auto-approve "tfplan" # Use -auto-approve to skip interactive confirmation
